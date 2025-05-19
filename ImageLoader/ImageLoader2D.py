@@ -13,61 +13,117 @@ from skimage.io import imread  # Retained for similar reasons, but tf.io.read_fi
 def get_image_paths(base_folder_path):
     """
     Gets all image and mask paths from the specified base folder.
-    Assumes 'train' folder for training images, 'masks' for training masks,
-    and 'test' for test images. Mask filenames are assumed to match training image filenames.
+    Tries two common directory structures.
+    Mask filenames are assumed to match training image filenames (possibly with different extensions).
     """
-    train_img_dir = os.path.join(base_folder_path, 'train/images')
-    mask_dir = os.path.join(base_folder_path, 'train/masks')
-    test_img_dir = os.path.join(base_folder_path, 'test/images')
+    # Strategy 1: Nested structure (e.g., train/images, train/masks, test/images)
+    train_img_dir_s1 = os.path.join(base_folder_path, 'train', 'images')
+    # Original assumption for S1 masks: base_folder_path/train/masks
+    mask_dir_s1 = os.path.join(base_folder_path, 'train', 'masks')
+    test_img_dir_s1 = os.path.join(base_folder_path, 'test', 'images')
 
-    train_image_paths = sorted(glob.glob(os.path.join(train_img_dir, "*.*")))
+    print(f"Attempting Strategy 1 paths:\n  Train Imgs: {train_img_dir_s1}\n  Masks: {mask_dir_s1}\n  Test Imgs: {test_img_dir_s1}")
+    
+    # Use a generic pattern for globbing, e.g., '*' or specific image types '*.[pjt][npji][gef]*'
+    # For simplicity, using "*.*" which was original, but can be refined.
+    img_file_pattern = "*.*" 
+    train_image_paths = sorted(glob.glob(os.path.join(train_img_dir_s1, img_file_pattern)))
 
-    train_mask_paths = []
-    for img_path in train_image_paths:
-        fname = os.path.basename(img_path)
-        # Attempt common extensions for masks if not directly matching (e.g. .png for .jpg image)
-        # This logic might need adjustment based on exact naming conventions.
-        # Simplest assumption: mask has same name and is a common mask format like png.
-        potential_mask_path_png = os.path.join(mask_dir, fname.split('.')[0] + '.png')
-        potential_mask_path_tif = os.path.join(mask_dir, fname.split('.')[0] + '.tif')
-        potential_mask_path_jpg = os.path.join(mask_dir, fname.split('.')[0] + '.jpg')
+    if train_image_paths:
+        print(f"Strategy 1: Found {len(train_image_paths)} training images in {train_img_dir_s1}.")
+        effective_train_img_dir = train_img_dir_s1
+        effective_mask_dir = mask_dir_s1
+        effective_test_img_dir = test_img_dir_s1
+    else:
+        print(f"Strategy 1 failed to find training images in {train_img_dir_s1}.")
+        # Strategy 2: Flatter structure (e.g., train/, masks/, test/)
+        train_img_dir_s2 = os.path.join(base_folder_path, 'train')
+        mask_dir_s2 = os.path.join(base_folder_path, 'masks') # Masks in a root 'masks' folder
+        test_img_dir_s2 = os.path.join(base_folder_path, 'test')
+        
+        print(f"Attempting Strategy 2 paths:\n  Train Imgs: {train_img_dir_s2}\n  Masks: {mask_dir_s2}\n  Test Imgs: {test_img_dir_s2}")
+        train_image_paths = sorted(glob.glob(os.path.join(train_img_dir_s2, img_file_pattern)))
 
-        if os.path.exists(os.path.join(mask_dir, fname)):
-            train_mask_paths.append(os.path.join(mask_dir, fname))
-        elif os.path.exists(potential_mask_path_png):
-            train_mask_paths.append(potential_mask_path_png)
-        elif os.path.exists(potential_mask_path_tif):
-            train_mask_paths.append(potential_mask_path_tif)
-        elif os.path.exists(potential_mask_path_jpg):
-            train_mask_paths.append(potential_mask_path_jpg)
+        if train_image_paths:
+            print(f"Strategy 2: Found {len(train_image_paths)} training images in {train_img_dir_s2}.")
+            effective_train_img_dir = train_img_dir_s2
+            effective_mask_dir = mask_dir_s2
+            effective_test_img_dir = test_img_dir_s2
         else:
-            # If mask is not found, you might want to raise an error or skip the image
-            print(f"Warning: Mask not found for image {img_path}")
-            # For now, let's assume it must exist or this will cause issues later.
-            # A robust solution would filter out images without masks here.
-            # For simplicity, assuming direct name match or common extensions.
-            # Fallback to expecting exact same filename in mask folder.
-            train_mask_paths.append(os.path.join(mask_dir, fname))
+            print(f"Strategy 2 also failed to find training images in {train_img_dir_s2}.")
+            print("Using Strategy 1 paths by default for error consistency, though no training images were found.")
+            effective_train_img_dir = train_img_dir_s1
+            effective_mask_dir = mask_dir_s1
+            effective_test_img_dir = test_img_dir_s1
+            # train_image_paths is already empty here
 
-    test_image_paths = sorted(glob.glob(os.path.join(test_img_dir, "*.*")))
+    print(f"\nEffective paths determined:\n  Train Img Dir: {effective_train_img_dir}\n  Mask Dir: {effective_mask_dir}\n  Test Img Dir: {effective_test_img_dir}\n")
 
-    # Filter out train images for which masks were not found if lists are unequal
-    if len(train_image_paths) != len(train_mask_paths):
-        print("Warning: Mismatch in number of training images and masks. Please check paths and naming.")
-        # This part needs robust handling, e.g. by creating pairs and filtering
-        valid_train_image_paths = []
-        valid_train_mask_paths = []
-        mask_basenames = {os.path.basename(p).split('.')[0]: p for p in train_mask_paths}
-        for img_p in train_image_paths:
-            img_basename = os.path.basename(img_p).split('.')[0]
-            if img_basename in mask_basenames:
-                valid_train_image_paths.append(img_p)
-                valid_train_mask_paths.append(mask_basenames[img_basename])
-        train_image_paths = valid_train_image_paths
-        train_mask_paths = valid_train_mask_paths
-        print(f"Filtered to {len(train_image_paths)} image/mask pairs.")
+    train_mask_paths_intermediate = [] # Store found mask paths before filtering
+    if not os.path.isdir(effective_mask_dir) and train_image_paths:
+        print(f"Warning: Mask directory '{effective_mask_dir}' does not exist. Cannot load masks.")
+    elif os.path.isdir(effective_mask_dir) and train_image_paths:
+        print(f"Searching for masks in '{effective_mask_dir}'...")
+        for img_path in train_image_paths:
+            fname = os.path.basename(img_path)
+            base_fname = os.path.splitext(fname)[0] # Use os.path.splitext for robust extension removal
+            
+            potential_mask_extensions = ['.png', '.tif', '.jpg', '.jpeg', '.gif']
+            # Also check for mask with same name as image (original behavior)
+            potential_mask_fnames_to_check = [fname] + [base_fname + ext for ext in potential_mask_extensions]
+            
+            found_mask_for_current_image = False
+            for p_mask_fname in potential_mask_fnames_to_check:
+                current_potential_mask_path = os.path.join(effective_mask_dir, p_mask_fname)
+                if os.path.exists(current_potential_mask_path):
+                    train_mask_paths_intermediate.append(current_potential_mask_path)
+                    found_mask_for_current_image = True
+                    break 
+            
+            if not found_mask_for_current_image:
+                # This print can be verbose if many masks are missing.
+                # print(f"Warning: Mask not found for image {img_path} (tried variants like {base_fname}.png/tif/jpg etc. in {effective_mask_dir}).")
+                pass # Do not add a placeholder; filtering will handle it.
+        if not train_mask_paths_intermediate and train_image_paths:
+            print(f"Warning: No masks found in '{effective_mask_dir}' for any training images.")
+        elif train_image_paths:
+            print(f"Found {len(train_mask_paths_intermediate)} potential mask files.")
 
-    return train_image_paths, train_mask_paths, test_image_paths
+
+    test_image_paths = sorted(glob.glob(os.path.join(effective_test_img_dir, img_file_pattern)))
+    if not test_image_paths and os.path.isdir(effective_test_img_dir):
+        print(f"No test images found in '{effective_test_img_dir}' with pattern '{img_file_pattern}'. Check file names/extensions.")
+    elif not os.path.isdir(effective_test_img_dir):
+        print(f"Warning: Test image directory '{effective_test_img_dir}' does not exist.")
+
+    # Filter to ensure images and masks are paired correctly.
+    # This logic assumes that if a mask is found, its basename (w/o ext) matches the image's basename.
+    final_train_image_paths = []
+    final_train_mask_paths = []
+
+    if train_image_paths and train_mask_paths_intermediate:
+        # Create a dictionary of found masks by their base names for efficient lookup
+        mask_map = {}
+        for m_path in train_mask_paths_intermediate:
+            mask_basename = os.path.splitext(os.path.basename(m_path))[0]
+            if mask_basename not in mask_map: # Keep first found mask if multiple exist for same base
+                 mask_map[mask_basename] = m_path
+        
+        for img_path in train_image_paths:
+            img_basename = os.path.splitext(os.path.basename(img_path))[0]
+            if img_basename in mask_map:
+                final_train_image_paths.append(img_path)
+                final_train_mask_paths.append(mask_map[img_basename])
+            else:
+                print(f"Note: No corresponding mask found for image {img_path} (basename: {img_basename}). This image will be excluded from training.")
+        
+        if len(final_train_image_paths) != len(train_image_paths):
+            print(f"Filtered training set from {len(train_image_paths)} images to {len(final_train_image_paths)} image/mask pairs due to missing/unmatched masks.")
+    elif train_image_paths and not train_mask_paths_intermediate: # Images found, but no masks at all
+        print("Warning: Training images were found, but no masks were loaded. Training set will be empty.")
+        # final_train_image_paths and final_train_mask_paths remain empty
+
+    return final_train_image_paths, final_train_mask_paths, test_image_paths
 
 
 def tf_dataset_generator(image_paths, mask_paths, img_height, img_width, is_test_set=False):
