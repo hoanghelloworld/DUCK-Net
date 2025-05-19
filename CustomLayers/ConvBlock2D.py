@@ -3,7 +3,7 @@ from keras.layers import Conv2D
 
 kernel_initializer = 'he_uniform'
 
-
+ 
 def conv_block_2D(x, filters, block_type, repeat=1, dilation_rate=1, size=3, padding='same'):
     result = x
 
