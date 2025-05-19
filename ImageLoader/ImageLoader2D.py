@@ -16,9 +16,9 @@ def get_image_paths(base_folder_path):
     Assumes 'train' folder for training images, 'masks' for training masks,
     and 'test' for test images. Mask filenames are assumed to match training image filenames.
     """
-    train_img_dir = os.path.join(base_folder_path, 'train')
-    mask_dir = os.path.join(base_folder_path, 'masks')
-    test_img_dir = os.path.join(base_folder_path, 'test')
+    train_img_dir = os.path.join(base_folder_path, 'train/images')
+    mask_dir = os.path.join(base_folder_path, 'train/masks')
+    test_img_dir = os.path.join(base_folder_path, 'test/images')
 
     train_image_paths = sorted(glob.glob(os.path.join(train_img_dir, "*.*")))
 
